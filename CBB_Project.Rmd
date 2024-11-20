@@ -1,0 +1,215 @@
+---
+title: "Data_Wrangling_MCBB"
+author: "Jay Vrins, Alyssa Chin, Thomas Hattan, Hans Bendixen"
+date: "2024-11-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+### Problem Statement:
+
+The College Basketball Dataset includes data from every D-1 Men’s College Basketball team from 2013 to 2023. Using the College Basketball Dataset, we will be exploring what variables and team statistics correlate the highest with making the NCAA tournament as well as making it far in the NCAA tournament. With hundreds of teams vying for a limited number of NCAA tournament berths, identifying key factors that differentiate successful teams can offer actionable insights. This problem is significant for coaches as it can help them create targeted strategies, focus improvement on specific areas, and assemble rosters by targeting players who excel in crucial statistical categories. By utilizing the findings of our analysis, teams can implement strategies to improve in areas that correlate with teams which historically have been the most successful in the NCAA tournament, and thus find success themselves. 
+
+
+Approach and Analytical Techniques:
+
+To analyze which variables are the most correlated with teams having success in making the NCAA tournament and winning tournament games, we will be using a regression analysis. By using a logistic regression we can calculate the odds of a team making the tournament or not based on specific offensive and defensive performance variables. Whichever variables show the most significance can be used to determine areas coaches should focus on improving to build a tournament team. For our analysis it is important that the model is explainable. Because of this, we could also utilize a decision tree that would give certain parameters that must be met (ex. A team must have a certain offensive efficiency to make the tournament) in order for our predicted outcome to be successful. The logistic regression is also explainable as coaches can learn how certain variables marginally improve the probability of making the tournament, while also taking into account certain variable correlations as well (ex. Teams that have high assists might have an even higher chance if they also have low turnovers). 
+
+For analyzing among tournament teams what are the greatest indicators of winning games within the tournament we can utilize linear regression, as coaches can see what marginal difference specific variables make in expected games won in the NCAA tournament.
+
+
+# Loading required packages 
+
+```{r,warning=FALSE}
+
+library(dplyr)
+# For data manipulation (filter, select, mutate, summarize, etc.).
+
+library(tidyr)
+# For tidying data (pivot_longer, pivot_wider, separate, unite, etc.).
+
+library(data.table)
+# For fast data manipulation.
+
+library(stringr)
+# For handling and manipulating string data.
+
+library(janitor)
+# For cleaning messy column names and data like removing empty rows/columns
+
+library(readr)
+# For reading and writing CSV files
+
+library(knitr)
+# For dynamic report generation, enabling you to integrate R code with text, tables, and figures in documents. 
+
+library(kableExtra)
+# Adding advanced styling options for tables. It allows you to customize the appearance and functionality of tables
+```
+
+# Data Importation and Preparation
+
+```{r}
+cb_data <- read_csv("C:/Users/jayde/Downloads/cbb.csv",show_col_types = FALSE)
+```
+
+### Source Data Explanation:
+
+This dataset was originally scraped from Bart Torvik, a popular college basketball data tracker, and later pulled, cleaned, and organized to be available on Kaggle. The data accumulates statistics and efficiency ratings from the years 2013-2023 for every team in Division I college basketball. The original purpose of this dataset was to be used as a way to compare teams across the Division I basketball landscape in different key statistics and efficiencies. The dataset also serves as a way to compare teams across time and determine whether changes in their strategies led to improved or worsening outcomes. While the Bart Torvik platform regularly updates statistics within their website the latest update to this dataset in Kaggle was March 18, 2024 or  around the end of last year’s season. An important peculiarity of this dataset is that the 2020 season is not included  in the analysis, as there was no NCAA tournament that year due to the Coronavirus pandemic. 
+As for the specific columns within the dataset, each team is identified by its name (TEAM) and its athletic conference (CONF), such as the ACC (Atlantic Coast Conference) or SEC (SouthEastern Conference). Meanwhile key performance metrics include the number of games won (W), alongside advanced efficiency measures like Adjusted Offensive Efficiency (ADJOE) and Adjusted Defensive Efficiency (ADJDE), which estimate how teams perform offensively and defensively against an average Division I opponent. The data set also features other metrics like shooting efficiency, rebounding (ORB, DRB), turnover rates (TOR, TORD), and Adjusted Tempo (ADJ_T), which estimates the pace of play. Finally, the dataset also shows rankings at the end of the regular season (RK) along with postseason outcomes (POSTSEASON), which detail how far a team advanced in the NCAA tournament, from early elimination rounds like the First Four (R68) to the championship (Champion). Tournament seedings (SEED) and the corresponding season (YEAR) are also recorded. This rich dataset offers a comprehensive view of team dynamics, making it valuable for evaluating basketball performance, strategy, and ultimately tournament success.
+
+### Data Cleaning Process:
+
+```{r}
+# Remove Duplicate Rows
+cb_data <- cb_data %>% distinct()
+```
+
+```{r}
+# Convert 'SEED' and 'CONF' columns to factors
+cb_data <- cb_data %>%
+  mutate(
+    SEED = as.factor(SEED),
+    CONF = as.factor(CONF)
+  )
+```
+
+```{r}
+
+# Create 'MADE_TOURNAMENT' column 
+cb_data <- cb_data %>%
+  mutate(
+    MADE_TOURNAMENT = ifelse(!is.na(POSTSEASON), "Yes", "No") # if NA then didn't make postseason, else they did
+  )
+
+```
+
+```{r}
+# Convert 'SEED' and 'CONF' columns to factors
+cb_data <- cb_data %>%
+  mutate(
+    MADE_TOURNAMENT = as.factor(MADE_TOURNAMENT))
+
+```
+
+```{r}
+
+# Create 'TOURNAMENT_WINS' column with "Didn't qualify" for teams that didn't make the tournament
+cb_data <- cb_data %>%
+  mutate(
+    TOURNAMENT_WINS = case_when(
+      POSTSEASON == "Champion" ~ "6",
+      POSTSEASON == "2ND" ~ "5",
+      POSTSEASON == "F4" ~ "4",
+      POSTSEASON == "E8" ~ "3",
+      POSTSEASON == "S16" ~ "2",
+      POSTSEASON == "R32" ~ "1",
+      POSTSEASON == "R64" ~ "0",
+      TRUE ~ "Didn't qualify"  # "Didn't qualify" if team did not make the tournament
+    )
+  )
+
+```
+
+Remove Duplicate Rows
+The data set was checked for duplicate rows to ensure there were no redundant entries. While no duplicates were identified, this step is a standard part of the cleaning process and was used to maintain data accuracy
+
+Verify and Standardize Data Types
+Data types were reviewed and changed where necessary to ensure all columns are appropriately formatted. Columns SEED and CONF were converted to categorical variables, as seeding represents discrete groups rather than continuous numerical values and CONF represents conference names. 
+
+Create New Features
+To aid in analysis, two new columns were added:
+
+MADE_TOURNAMENT: The POSTSEASON column was used to create a binary column that indicates if a team participated in the NCAA tournament (1 for Yes, 0 for No). This was based on whether the POSTSEASON column had non-null values, meaning they made the tournament. 
+
+TOURNAMENT_WINS: This column quantifies tournament success by mapping POSTSEASON stages to the corresponding number of wins. For example, "Champions" was assigned 6 wins, "Final Four" was assigned 5 wins, and so on.
+
+Handle Missing Values
+As expected, there were missing values in the POSTSEASON and SEED columns for teams that did not qualify for the NCAA tournament. These values were retained for context. However, analyses focusing on tournament-specific variables will be replaced with "Didn't Quality" for rows where MADE_TOURNAMENT = "NO". 
+
+### Final Dataset Presentation:
+
+Here we display some summary information for key variables for certain observations of our final dataset:
+```{r}
+
+# Select the specified columns to show for this visualization 
+cb_data_selected <- cb_data %>%
+  head(10)%>%
+  select(TEAM, CONF, W, ADJOE, ADJDE, EFG_O, EFG_D, SEED, POSTSEASON, YEAR,MADE_TOURNAMENT,TOURNAMENT_WINS)
+# Display the head of the selected columns in a polished table format
+cb_data_selected %>%
+  kable(
+    caption = "Summary of Selected College Basketball Data",
+    col.names = c("Team", "Conference", "Wins", "Adj. Offensive Eff.", "Adj. Defensive Eff.",
+                  "Effective FG% (Offense)", "Effective FG% (Defense)", "Seed", "Postseason", "Year","Made_Tournament","Tournament_wins"),
+    align = "c"
+  ) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+### Summary of Variables
+
+```{r}
+# Define a custom function to calculate mode
+
+calculate_mode <- function(x) {
+  if (is.numeric(x)) {
+    uniq_x <- unique(na.omit(x))
+    uniq_x[which.max(tabulate(match(x, uniq_x)))]
+  } else {
+    NA
+  }
+}
+
+# Select the columns of interest
+selected_data <- cb_data %>%
+  select(TEAM, CONF, W, ADJOE, ADJDE, EFG_O, EFG_D, SEED, POSTSEASON, YEAR, MADE_TOURNAMENT, TOURNAMENT_WINS,MADE_TOURNAMENT,TOURNAMENT_WINS)
+
+# Create a summary table
+summary_table <- tibble(
+  Variable = c("Team", "Conference", "Wins", "Adj. Offensive Eff.", "Adj. Defensive Eff.",
+               "Effective FG% (Offense)", "Effective FG% (Defense)", "Seed", "Postseason", 
+               "Year", "Made_Tournament", "Tournament_wins"),
+  Type = sapply(selected_data, class),
+  Range = sapply(selected_data, function(x) {
+    if (is.numeric(x)) paste0(min(x, na.rm = TRUE), " - ", max(x, na.rm = TRUE)) else ""
+  }),
+  Mean = sapply(selected_data, function(x) {
+    if (is.numeric(x)) round(mean(x, na.rm = TRUE), 2) else ""
+  }),
+  Median = sapply(selected_data, function(x) {
+    if (is.numeric(x)) median(x, na.rm = TRUE) else ""
+  }),
+  Mode = sapply(selected_data, function(x) {
+    if (is.numeric(x)) calculate_mode(x) else ""
+  }),
+  Unique_Obs = sapply(selected_data, function(x) {
+    length(unique(x))
+  })
+)
+
+
+# Display the summary table in a horizontal format
+kable(summary_table) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+# Proposed Exploratory Data Analysis
+
+We are exploring this dataset in order to identify key statistical factors that most strongly correlate with both making the NCAA tournament and achieving success within it.
+
+In our strategy, we are planning on using two new variables: MADE_TOURNAMENT, which will be a binary indicator showing whether a team qualified for the NCAA tournament, and TOURNAMENT_WINS, which will quantify tournament success by converting postseason results into actual win counts. These new features will help us better analyze patterns in tournament participation and success rates.
+
+In order to clearly demonstrate our findings, we plan on using a variety of data visualizations. In the exploratory portion of our project, we can utilize visualizations such as histograms and box plots. For example, we can use box plots to compare variable distribution across different groups (such as tournament seeds). Additionally, we can also use histograms to analyze the distribution between different offensive and defensive variables. The previously mentioned logistic regression, decision tree, and linear regression are in themselves visualizations. For example, the linear regression can be visualized through a scatter plot with a fitted line, in order to demonstrate the relationship between our chosen predictors and dependent variables. We are planning to accompany the linear regression model with a residual plot, in order to assess the accuracy of the model and identify any potential outliers.
+
+Our analysis will utilize three machine learning approaches: logistic regression to predict tournament qualification based on offensive and defensive variables, decision trees to establish clear statistical thresholds teams must meet, and a linear regression to analyze what factors contribute most to tournament wins once teams qualify. The logistic regression and decision trees will help identify which statistics best predict making the tournament, while also demonstrating important data patterns. Linear regression will focus primarily on tournament teams, showing which variables have the strongest impact on expected tournament wins. We decided to choose these methods as they are able to provide clear, interpretable results that coaches can easily understand and implement.
+
+
+
